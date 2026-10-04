@@ -46,6 +46,10 @@ export type TenantMembershipStatus =
 @Unique('IDX_TENANT_MEMBERSHIP_TENANT_USER_UNIQUE', ['tenantId', 'userId'])
 @Index('IDX_TENANT_MEMBERSHIP_TENANT_ID', ['tenantId'])
 @Index('IDX_TENANT_MEMBERSHIP_USER_ID', ['userId'])
+@Index('IDX_TENANT_MEMBERSHIP_ONE_ACTIVE_OWNER', ['tenantId'], {
+  unique: true,
+  where: `"role" = 'owner' AND "status" = 'active'`,
+})
 @Check('CHK_TENANT_MEMBERSHIP_ROLE', `"role" IN ('owner', 'admin', 'member')`)
 @Check(
   'CHK_TENANT_MEMBERSHIP_STATUS',
