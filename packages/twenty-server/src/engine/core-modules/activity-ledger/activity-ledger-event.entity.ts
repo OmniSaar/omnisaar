@@ -58,6 +58,18 @@ export type ActivityLedgerResult = (typeof ACTIVITY_LEDGER_RESULTS)[number];
   'CHK_ACTIVITY_LEDGER_ARTIFACT_REFS_ARRAY',
   `jsonb_typeof("artifactReferences") = 'array'`,
 )
+@Check(
+  'CHK_ACTIVITY_LEDGER_DURATION_NONNEGATIVE',
+  `"durationMs" IS NULL OR "durationMs" >= 0`,
+)
+@Check(
+  'CHK_ACTIVITY_LEDGER_COST_NONNEGATIVE',
+  `"cost" IS NULL OR "cost" >= 0`,
+)
+@Check(
+  'CHK_ACTIVITY_LEDGER_TOKEN_USAGE_NONNEGATIVE',
+  `"tokenUsage" IS NULL OR "tokenUsage" >= 0`,
+)
 export class ActivityLedgerEventEntity {
   @PrimaryGeneratedColumn('uuid')
   eventId: string;
