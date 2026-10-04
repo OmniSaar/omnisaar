@@ -467,6 +467,12 @@ export class ApprovalService {
         });
 
         if (existing) {
+          if (existing.actionHash !== actionHash) {
+            throw new ConflictException(
+              'Idempotency key is already bound to a different approval action.',
+            );
+          }
+
           return existing;
         }
       }
@@ -702,18 +708,6 @@ export class ApprovalService {
         return deny('not-approved');
       }
 
-      if (approval.expiresAt.getTime() <= Date.now()) {
-        approval.status = 'expired';
-        await repository.save(approval);
-        await this.appendApprovalStateEvent(manager, approval, {
-          eventType: 'approval.expired',
-          actorId,
-          result: 'cancelled',
-        });
-
-        return deny('expired');
-      }
-
       if (!permissionGranted) {
         return deny('permission-denied');
       }
@@ -741,6 +735,18 @@ export class ApprovalService {
         }
 
         return deny('approval-replayed');
+      }
+
+      if (approval.expiresAt.getTime() <= Date.now()) {
+        approval.status = 'expired';
+        await repository.save(approval);
+        await this.appendApprovalStateEvent(manager, approval, {
+          eventType: 'approval.expired',
+          actorId,
+          result: 'cancelled',
+        });
+
+        return deny('expired');
       }
 
       approval.consumedAt = new Date();
