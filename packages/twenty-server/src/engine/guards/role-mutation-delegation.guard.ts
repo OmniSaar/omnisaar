@@ -2,29 +2,38 @@ import {
   type CanActivate,
   type ExecutionContext,
   Injectable,
-  mixin,
-  type Type,
 } from '@nestjs/common';
 import { GqlExecutionContext } from '@nestjs/graphql';
 
 import { msg } from '@lingui/core/macro';
 import { isDefined } from 'twenty-shared/utils';
 
+import { type UpsertFieldPermissionsInput } from 'src/engine/metadata-modules/object-permission/dtos/upsert-field-permissions.input';
+import { type UpsertObjectPermissionsInput } from 'src/engine/metadata-modules/object-permission/dtos/upsert-object-permissions.input';
 import {
   PermissionsException,
   PermissionsExceptionCode,
   PermissionsExceptionMessage,
 } from 'src/engine/metadata-modules/permissions/permissions.exception';
+import { type UpsertPermissionFlagsInput } from 'src/engine/metadata-modules/role-permission-flag/dtos/upsert-permission-flags.input';
 import { type CreateRoleInput } from 'src/engine/metadata-modules/role/dtos/create-role.input';
 import { type RoleDTO } from 'src/engine/metadata-modules/role/dtos/role.dto';
 import { type UpdateRoleInput } from 'src/engine/metadata-modules/role/dtos/update-role.input';
 import { type RoleEntity } from 'src/engine/metadata-modules/role/role.entity';
 import { RoleService } from 'src/engine/metadata-modules/role/role.service';
-import { type UpsertFieldPermissionsInput } from 'src/engine/metadata-modules/object-permission/dtos/upsert-field-permissions.input';
-import { type UpsertObjectPermissionsInput } from 'src/engine/metadata-modules/object-permission/dtos/upsert-object-permissions.input';
-import { type UpsertPermissionFlagsInput } from 'src/engine/metadata-modules/role-permission-flag/dtos/upsert-permission-flags.input';
 import { UserRoleService } from 'src/engine/metadata-modules/user-role/user-role.service';
 import { assertRoleWithinDelegationCeilingOrThrow } from 'src/engine/metadata-modules/user-role/utils/assert-role-within-delegation-ceiling.util';
+
+const ROLE_MUTATION_FIELDS = new Set([
+  'createOneRole',
+  'updateOneRole',
+  'updateWorkspaceMemberRole',
+  'upsertPermissionFlags',
+  'upsertObjectPermissions',
+  'upsertFieldPermissions',
+  'upsertRowLevelPermissionPredicates',
+  'assignRoleToAgent',
+]);
 
 type RoleLike = Pick<
   RoleDTO,
@@ -65,16 +74,6 @@ const asDelegationRole = (role: RoleLike): RoleEntity =>
     rowLevelPermissionPredicateGroups:
       role.rowLevelPermissionPredicateGroups ?? [],
   }) as unknown as RoleEntity;
-
-const denyRowLevelMutation = (): never => {
-  throw new PermissionsException(
-    'Row-level permission mutation requires a fully privileged workspace administrator during P0',
-    PermissionsExceptionCode.PERMISSION_DENIED,
-    {
-      userFriendlyMessage: msg`Only a fully privileged workspace administrator can change row-level access rules right now.`,
-    },
-  );
-};
 
 const getRequiredRoleOrThrow = async ({
   roleId,
@@ -182,163 +181,176 @@ const projectFieldPermissions = ({
   };
 };
 
-export const RoleMutationDelegationGuard = (): Type<CanActivate> => {
-  @Injectable()
-  class RoleMutationDelegationMixin implements CanActivate {
-    constructor(
-      private readonly roleService: RoleService,
-      private readonly userRoleService: UserRoleService,
-    ) {}
+const denyRowLevelMutation = (): never => {
+  throw new PermissionsException(
+    'Row-level permission mutation requires a fully privileged workspace administrator during P0',
+    PermissionsExceptionCode.PERMISSION_DENIED,
+    {
+      userFriendlyMessage: msg`Only a fully privileged workspace administrator can change row-level access rules right now.`,
+    },
+  );
+};
 
-    async canActivate(context: ExecutionContext): Promise<boolean> {
-      const ctx = GqlExecutionContext.create(context);
-      const request = ctx.getContext().req;
-      const actingUserWorkspaceId = request.userWorkspaceId as
-        | string
-        | undefined;
+@Injectable()
+export class RoleMutationDelegationGuard implements CanActivate {
+  constructor(
+    private readonly roleService: RoleService,
+    private readonly userRoleService: UserRoleService,
+  ) {}
 
-      // Preserve trusted system/API-key/application flows. Human workspace
-      // mutations are the delegation boundary enforced here.
-      if (!isDefined(actingUserWorkspaceId)) {
-        return true;
-      }
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (context.getType<string>() !== 'graphql') {
+      return true;
+    }
 
-      const workspaceId = request.workspace.id as string;
-      const fieldName = ctx.getInfo().fieldName as string;
-      const args = ctx.getArgs() as Record<string, unknown>;
+    const ctx = GqlExecutionContext.create(context);
+    const fieldName = ctx.getInfo()?.fieldName as string | undefined;
 
-      const actorRoleId = await this.userRoleService.getRoleIdForUserWorkspace({
-        workspaceId,
-        userWorkspaceId: actingUserWorkspaceId,
+    if (!fieldName || !ROLE_MUTATION_FIELDS.has(fieldName)) {
+      return true;
+    }
+
+    const request = ctx.getContext().req;
+    const actingUserWorkspaceId = request?.userWorkspaceId as
+      | string
+      | undefined;
+    const workspaceId = request?.workspace?.id as string | undefined;
+
+    // Non-human/system principals keep their existing trusted provisioning path.
+    if (!isDefined(actingUserWorkspaceId) || !isDefined(workspaceId)) {
+      return true;
+    }
+
+    const args = ctx.getArgs() as Record<string, unknown>;
+    const actorRoleId = await this.userRoleService.getRoleIdForUserWorkspace({
+      workspaceId,
+      userWorkspaceId: actingUserWorkspaceId,
+    });
+    const actorRole = await getRequiredRoleOrThrow({
+      roleId: actorRoleId,
+      roleService: this.roleService,
+      workspaceId,
+    });
+
+    const assertProjectedRole = (targetRole: RoleLike) =>
+      assertRoleWithinDelegationCeilingOrThrow({
+        actorRole: asDelegationRole(actorRole),
+        targetRole: asDelegationRole(targetRole),
       });
-      const actorRole = await getRequiredRoleOrThrow({
-        roleId: actorRoleId,
+
+    if (fieldName === 'createOneRole') {
+      const input = args.createRoleInput as CreateRoleInput;
+
+      assertProjectedRole({
+        id: 'role-create-candidate',
+        canUpdateAllSettings: input.canUpdateAllSettings ?? false,
+        canAccessAllTools: input.canAccessAllTools ?? false,
+        canReadAllObjectRecords: input.canReadAllObjectRecords ?? false,
+        canUpdateAllObjectRecords: input.canUpdateAllObjectRecords ?? false,
+        canSoftDeleteAllObjectRecords:
+          input.canSoftDeleteAllObjectRecords ?? false,
+        canDestroyAllObjectRecords: input.canDestroyAllObjectRecords ?? false,
+        permissionFlags: [],
+        objectPermissions: [],
+        fieldPermissions: [],
+      });
+
+      return true;
+    }
+
+    if (fieldName === 'updateOneRole') {
+      const input = args.updateRoleInput as UpdateRoleInput;
+      const currentRole = await getRequiredRoleOrThrow({
+        roleId: input.id,
         roleService: this.roleService,
         workspaceId,
       });
 
-      const assertProjectedRole = (targetRole: RoleLike) =>
-        assertRoleWithinDelegationCeilingOrThrow({
-          actorRole: asDelegationRole(actorRole),
-          targetRole: asDelegationRole(targetRole),
-        });
+      assertProjectedRole({
+        ...currentRole,
+        ...input.update,
+        id: `${currentRole.id}:candidate`,
+      });
 
-      if (fieldName === 'createOneRole') {
-        const input = args.createRoleInput as CreateRoleInput;
+      return true;
+    }
 
-        assertProjectedRole({
-          id: 'role-create-candidate',
-          canUpdateAllSettings: input.canUpdateAllSettings ?? false,
-          canAccessAllTools: input.canAccessAllTools ?? false,
-          canReadAllObjectRecords: input.canReadAllObjectRecords ?? false,
-          canUpdateAllObjectRecords: input.canUpdateAllObjectRecords ?? false,
-          canSoftDeleteAllObjectRecords:
-            input.canSoftDeleteAllObjectRecords ?? false,
-          canDestroyAllObjectRecords: input.canDestroyAllObjectRecords ?? false,
-          permissionFlags: [],
-          objectPermissions: [],
-          fieldPermissions: [],
-        });
+    if (fieldName === 'upsertPermissionFlags') {
+      const input = args.upsertPermissionFlagsInput as UpsertPermissionFlagsInput;
+      const targetRole = await getRequiredRoleOrThrow({
+        roleId: input.roleId,
+        roleService: this.roleService,
+        workspaceId,
+      });
 
-        return true;
-      }
+      assertProjectedRole({
+        ...targetRole,
+        id: `${targetRole.id}:candidate`,
+        permissionFlags: input.permissionFlagKeys.map((flag, index) => ({
+          id: `candidate-${index}`,
+          roleId: targetRole.id,
+          flag,
+        })),
+      });
 
-      if (fieldName === 'updateOneRole') {
-        const input = args.updateRoleInput as UpdateRoleInput;
-        const currentRole = await getRequiredRoleOrThrow({
-          roleId: input.id,
-          roleService: this.roleService,
-          workspaceId,
-        });
+      return true;
+    }
 
-        assertProjectedRole({
-          ...currentRole,
-          ...input.update,
-          id: `${currentRole.id}:candidate`,
-        });
+    if (fieldName === 'upsertObjectPermissions') {
+      const input = args.upsertObjectPermissionsInput as UpsertObjectPermissionsInput;
+      const targetRole = await getRequiredRoleOrThrow({
+        roleId: input.roleId,
+        roleService: this.roleService,
+        workspaceId,
+      });
 
-        return true;
-      }
+      assertProjectedRole(projectObjectPermissions({ input, targetRole }));
 
-      if (fieldName === 'upsertPermissionFlags') {
-        const input = args.upsertPermissionFlagsInput as UpsertPermissionFlagsInput;
-        const targetRole = await getRequiredRoleOrThrow({
-          roleId: input.roleId,
-          roleService: this.roleService,
-          workspaceId,
-        });
+      return true;
+    }
 
-        assertProjectedRole({
-          ...targetRole,
-          id: `${targetRole.id}:candidate`,
-          permissionFlags: input.permissionFlagKeys.map((flag, index) => ({
-            id: `candidate-${index}`,
-            roleId: targetRole.id,
-            flag,
-          })),
-        });
+    if (fieldName === 'upsertFieldPermissions') {
+      const input = args.upsertFieldPermissionsInput as UpsertFieldPermissionsInput;
+      const targetRole = await getRequiredRoleOrThrow({
+        roleId: input.roleId,
+        roleService: this.roleService,
+        workspaceId,
+      });
 
-        return true;
-      }
+      assertProjectedRole(projectFieldPermissions({ input, targetRole }));
 
-      if (fieldName === 'upsertObjectPermissions') {
-        const input = args.upsertObjectPermissionsInput as UpsertObjectPermissionsInput;
-        const targetRole = await getRequiredRoleOrThrow({
-          roleId: input.roleId,
-          roleService: this.roleService,
-          workspaceId,
-        });
+      return true;
+    }
 
-        assertProjectedRole(projectObjectPermissions({ input, targetRole }));
+    if (fieldName === 'upsertRowLevelPermissionPredicates') {
+      const fullyPrivilegedForRecords =
+        actorRole.canUpdateAllSettings &&
+        actorRole.canReadAllObjectRecords &&
+        actorRole.canUpdateAllObjectRecords &&
+        actorRole.canSoftDeleteAllObjectRecords &&
+        actorRole.canDestroyAllObjectRecords;
 
-        return true;
-      }
-
-      if (fieldName === 'upsertFieldPermissions') {
-        const input = args.upsertFieldPermissionsInput as UpsertFieldPermissionsInput;
-        const targetRole = await getRequiredRoleOrThrow({
-          roleId: input.roleId,
-          roleService: this.roleService,
-          workspaceId,
-        });
-
-        assertProjectedRole(projectFieldPermissions({ input, targetRole }));
-
-        return true;
-      }
-
-      if (fieldName === 'upsertRowLevelPermissionPredicates') {
-        const fullyPrivilegedForRecords =
-          actorRole.canUpdateAllSettings &&
-          actorRole.canReadAllObjectRecords &&
-          actorRole.canUpdateAllObjectRecords &&
-          actorRole.canSoftDeleteAllObjectRecords &&
-          actorRole.canDestroyAllObjectRecords;
-
-        if (!fullyPrivilegedForRecords) {
-          denyRowLevelMutation();
-        }
-
-        return true;
-      }
-
-      if (
-        fieldName === 'updateWorkspaceMemberRole' ||
-        fieldName === 'assignRoleToAgent'
-      ) {
-        const roleId = args.roleId as string;
-        const targetRole = await getRequiredRoleOrThrow({
-          roleId,
-          roleService: this.roleService,
-          workspaceId,
-        });
-
-        assertProjectedRole(targetRole);
+      if (!fullyPrivilegedForRecords) {
+        denyRowLevelMutation();
       }
 
       return true;
     }
-  }
 
-  return mixin(RoleMutationDelegationMixin);
-};
+    if (
+      fieldName === 'updateWorkspaceMemberRole' ||
+      fieldName === 'assignRoleToAgent'
+    ) {
+      const roleId = args.roleId as string;
+      const targetRole = await getRequiredRoleOrThrow({
+        roleId,
+        roleService: this.roleService,
+        workspaceId,
+      });
+
+      assertProjectedRole(targetRole);
+    }
+
+    return true;
+  }
+}
