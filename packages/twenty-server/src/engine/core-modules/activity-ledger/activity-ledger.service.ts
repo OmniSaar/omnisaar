@@ -1,12 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import {
-  EntityManager,
-  IsNull,
-  QueryFailedError,
-  Repository,
-} from 'typeorm';
+import { type EntityManager, IsNull, type Repository } from 'typeorm';
 
 import {
   ActivityLedgerEventEntity,
@@ -83,25 +78,44 @@ export class ActivityLedgerService {
   async append(
     input: AppendActivityLedgerEventInput,
   ): Promise<ActivityLedgerEventEntity> {
-    return this.appendUsingRepository(this.activityLedgerRepository, input);
+    return this.activityLedgerRepository.manager.transaction((manager) =>
+      this.appendWithManager(manager, input),
+    );
   }
 
   async appendWithManager(
     manager: EntityManager,
     input: AppendActivityLedgerEventInput,
   ): Promise<ActivityLedgerEventEntity> {
-    return this.appendUsingRepository(
-      manager.getRepository(ActivityLedgerEventEntity),
-      input,
-    );
-  }
+    const repository = manager.getRepository(ActivityLedgerEventEntity);
 
-  private async appendUsingRepository(
-    repository: ActivityLedgerRepository,
-    input: AppendActivityLedgerEventInput,
-  ): Promise<ActivityLedgerEventEntity> {
     assertMetadataIsSafe(input.metadata ?? {});
     assertMetadataIsSafe(input.artifactReferences ?? [], 'artifactReferences');
+
+    if (input.idempotencyKey) {
+      const idempotencyScope = [
+        input.tenantId ?? 'instance',
+        input.workspaceId ?? 'tenant',
+        input.idempotencyKey,
+      ].join(':');
+
+      await manager.query(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        [idempotencyScope],
+      );
+
+      const existingEvent = await repository.findOne({
+        where: {
+          tenantId: input.tenantId ?? IsNull(),
+          workspaceId: input.workspaceId ?? IsNull(),
+          idempotencyKey: input.idempotencyKey,
+        },
+      });
+
+      if (existingEvent) {
+        return existingEvent;
+      }
+    }
 
     const event = repository.create({
       ...input,
@@ -125,28 +139,6 @@ export class ActivityLedgerService {
       artifactReferences: input.artifactReferences ?? [],
     });
 
-    try {
-      return await repository.save(event);
-    } catch (error) {
-      if (
-        input.idempotencyKey &&
-        error instanceof QueryFailedError &&
-        (error.driverError as { code?: string } | undefined)?.code === '23505'
-      ) {
-        const existingEvent = await repository.findOne({
-          where: {
-            tenantId: input.tenantId ?? IsNull(),
-            workspaceId: input.workspaceId ?? IsNull(),
-            idempotencyKey: input.idempotencyKey,
-          },
-        });
-
-        if (existingEvent) {
-          return existingEvent;
-        }
-      }
-
-      throw error;
-    }
+    return repository.save(event);
   }
 }
