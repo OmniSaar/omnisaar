@@ -1,6 +1,9 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
+import { type MessageDescriptor } from '@lingui/core';
+import { msg } from '@lingui/core/macro';
+import { assertUnreachable } from 'twenty-shared/utils';
 import { Repository } from 'typeorm';
 
 import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenant-access-control.service';
@@ -20,7 +23,38 @@ export enum WorkspaceAdministrationExceptionCode {
   INVALID_CAPABILITY = 'WORKSPACE_ADMINISTRATION_INVALID_CAPABILITY',
 }
 
-export class WorkspaceAdministrationException extends CustomException<WorkspaceAdministrationExceptionCode> {}
+const getWorkspaceAdministrationExceptionUserFriendlyMessage = (
+  code: WorkspaceAdministrationExceptionCode,
+): MessageDescriptor => {
+  switch (code) {
+    case WorkspaceAdministrationExceptionCode.GRANT_NOT_FOUND:
+      return msg`You are not an administrator for this workspace.`;
+    case WorkspaceAdministrationExceptionCode.GRANT_INACTIVE:
+      return msg`Your workspace administration access is not active.`;
+    case WorkspaceAdministrationExceptionCode.CAPABILITY_DENIED:
+      return msg`You do not have permission to perform this workspace administration action.`;
+    case WorkspaceAdministrationExceptionCode.PRIVILEGE_ESCALATION_DENIED:
+      return msg`You cannot grant workspace permissions above your own access level.`;
+    case WorkspaceAdministrationExceptionCode.INVALID_CAPABILITY:
+      return msg`One or more requested workspace permissions are not valid.`;
+    default:
+      assertUnreachable(code);
+  }
+};
+
+export class WorkspaceAdministrationException extends CustomException<WorkspaceAdministrationExceptionCode> {
+  constructor(
+    message: string,
+    code: WorkspaceAdministrationExceptionCode,
+    statusCode: number,
+  ) {
+    super(message, code, {
+      statusCode,
+      userFriendlyMessage:
+        getWorkspaceAdministrationExceptionUserFriendlyMessage(code),
+    });
+  }
+}
 
 @Injectable()
 export class WorkspaceAdministrationService {
@@ -70,7 +104,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${userId} has no administration grant for workspace ${workspaceId}`,
         WorkspaceAdministrationExceptionCode.GRANT_NOT_FOUND,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -78,7 +112,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `Workspace administration grant ${grant.id} is ${grant.status}`,
         WorkspaceAdministrationExceptionCode.GRANT_INACTIVE,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -86,7 +120,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${userId} lacks ${capability} for workspace ${workspaceId}`,
         WorkspaceAdministrationExceptionCode.CAPABILITY_DENIED,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
   }
@@ -131,7 +165,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${actorUserId} cannot delegate workspace administration for ${workspaceId}`,
         WorkspaceAdministrationExceptionCode.CAPABILITY_DENIED,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -146,7 +180,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${actorUserId} cannot delegate workspace administrators`,
         WorkspaceAdministrationExceptionCode.CAPABILITY_DENIED,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
 
@@ -158,7 +192,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${actorUserId} cannot grant workspace capability ${escalatedCapability}`,
         WorkspaceAdministrationExceptionCode.PRIVILEGE_ESCALATION_DENIED,
-        { statusCode: HttpStatus.FORBIDDEN },
+        HttpStatus.FORBIDDEN,
       );
     }
   }
@@ -177,7 +211,7 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `Unknown workspace administration capability: ${invalidCapability}`,
         WorkspaceAdministrationExceptionCode.INVALID_CAPABILITY,
-        { statusCode: HttpStatus.BAD_REQUEST },
+        HttpStatus.BAD_REQUEST,
       );
     }
   }
