@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 
 import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenant-access-control.service';
 import { TenantMembershipEntity } from 'src/engine/core-modules/tenant/tenant-membership.entity';
+import { TenantProvisioningService } from 'src/engine/core-modules/tenant/tenant-provisioning.service';
 import { TenantWorkspaceEntity } from 'src/engine/core-modules/tenant/tenant-workspace.entity';
 import { TenantEntity } from 'src/engine/core-modules/tenant/tenant.entity';
 import { WorkspaceAdministrationGrantEntity } from 'src/engine/core-modules/tenant/workspace-administration-grant.entity';
@@ -129,11 +130,13 @@ export class TenantContextService {
     TenantContextService,
     TenantAccessControlService,
     WorkspaceAdministrationService,
+    TenantProvisioningService,
   ],
   exports: [
     TenantContextService,
     TenantAccessControlService,
     WorkspaceAdministrationService,
+    TenantProvisioningService,
   ],
 })
 export class TenantModule {}
