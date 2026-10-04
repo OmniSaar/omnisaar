@@ -41,6 +41,7 @@ export type ApprovalActionInput = {
 export type ApprovalExecutionDenialReason =
   | 'not-approved'
   | 'expired'
+  | 'permission-denied'
   | 'action-mismatch'
   | 'approval-replayed'
   | 'policy-denied';
@@ -61,7 +62,7 @@ const DEFAULT_APPROVAL_TTL_MS = 30 * 60 * 1000;
 const MAX_STORED_STRUCTURED_BYTES = 32 * 1024;
 
 const DENIED_ACTION_PREFIXES = [
-  'administration.',
+  'administration',
   'security.secret',
   'security.credential',
   'crm.bulk_export',
@@ -147,7 +148,21 @@ const assertSafeStoredData = (
   value: unknown,
   path = 'value',
 ): void => {
-  const serialized = JSON.stringify(value);
+  let serialized: string | undefined;
+
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    throw new BadRequestException(
+      `${path} must contain only JSON-serializable values.`,
+    );
+  }
+
+  if (serialized === undefined) {
+    throw new BadRequestException(
+      `${path} must contain only JSON-serializable values.`,
+    );
+  }
 
   if (serialized.length > MAX_STORED_STRUCTURED_BYTES) {
     throw new BadRequestException(
@@ -628,6 +643,8 @@ export class ApprovalService {
     actionType,
     toolName,
     actionParameters,
+    permissionGranted,
+    permissionReason,
   }: {
     approvalId: string;
     executionId: string;
@@ -638,6 +655,8 @@ export class ApprovalService {
     actionType: string;
     toolName?: string | null;
     actionParameters: Record<string, unknown>;
+    permissionGranted: boolean;
+    permissionReason?: string;
   }): Promise<ApprovalExecutionDecision> {
     return this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(ApprovalRequestEntity);
@@ -668,7 +687,12 @@ export class ApprovalService {
           result: 'denied',
           approvalState: approval.status,
           idempotencyKey: `approval-execution-denied:${approval.id}:${executionId}:${reason}`,
-          metadata: { reason, executionId },
+          metadata: {
+            reason,
+            executionId,
+            permissionReason:
+              reason === 'permission-denied' ? permissionReason ?? null : null,
+          },
         });
 
         return { authorized: false, reason, approval };
@@ -688,6 +712,10 @@ export class ApprovalService {
         });
 
         return deny('expired');
+      }
+
+      if (!permissionGranted) {
+        return deny('permission-denied');
       }
 
       const currentPolicy = this.approvalPolicyService.evaluate(actionType);
