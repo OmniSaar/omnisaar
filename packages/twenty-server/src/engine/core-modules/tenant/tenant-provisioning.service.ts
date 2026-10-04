@@ -101,6 +101,12 @@ export class TenantProvisioningService {
       where: { tenantId, userId: targetUserId },
     });
 
+    if (existingMembership?.role === 'owner') {
+      throw new ConflictException(
+        'Owner membership can only change through an explicit ownership transfer.',
+      );
+    }
+
     const membership =
       existingMembership ??
       this.tenantMembershipRepository.create({
