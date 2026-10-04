@@ -38,6 +38,13 @@ export type ApprovalActionInput = {
   actionParameters: Record<string, unknown>;
 };
 
+export type ApprovalExecutionDenialReason =
+  | 'not-approved'
+  | 'expired'
+  | 'action-mismatch'
+  | 'approval-replayed'
+  | 'policy-denied';
+
 export type ApprovalExecutionDecision =
   | {
       authorized: true;
@@ -45,12 +52,7 @@ export type ApprovalExecutionDecision =
     }
   | {
       authorized: false;
-      reason:
-        | 'not-approved'
-        | 'expired'
-        | 'action-mismatch'
-        | 'approval-replayed'
-        | 'policy-denied';
+      reason: ApprovalExecutionDenialReason;
       approval: ApprovalRequestEntity;
     };
 
@@ -370,7 +372,9 @@ export class ApprovalService {
       actionPreview,
       requiredApproverRoleId,
       policySnapshot: policy,
-      expiresAt: new Date(Date.now() + (policy.approvalTtlMs ?? DEFAULT_APPROVAL_TTL_MS)),
+      expiresAt: new Date(
+        Date.now() + (policy.approvalTtlMs ?? DEFAULT_APPROVAL_TTL_MS),
+      ),
       correlationId,
       idempotencyKey,
     });
@@ -647,9 +651,7 @@ export class ApprovalService {
       }
 
       const deny = async (
-        reason: ApprovalExecutionDecision extends { authorized: false; reason: infer R }
-          ? R
-          : never,
+        reason: ApprovalExecutionDenialReason,
       ): Promise<ApprovalExecutionDecision> => {
         await this.activityLedgerService.appendWithManager(manager, {
           eventType: 'agent.action_denied',
