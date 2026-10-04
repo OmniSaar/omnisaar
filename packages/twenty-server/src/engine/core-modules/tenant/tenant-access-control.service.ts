@@ -134,6 +134,14 @@ export class TenantAccessControlService {
   }): Promise<void> {
     this.assertKnownCapabilities(requestedCapabilities);
 
+    if (requestedRole === 'owner') {
+      throw new TenantAccessControlException(
+        'Owner assignment is reserved for first-owner bootstrap or explicit ownership transfer',
+        TenantAccessControlExceptionCode.PRIVILEGE_ESCALATION_DENIED,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     if (requestedRole === 'member' && requestedCapabilities.length > 0) {
       throw new TenantAccessControlException(
         'Ordinary tenant members cannot receive administration capabilities',
@@ -167,14 +175,6 @@ export class TenantAccessControlService {
       throw new TenantAccessControlException(
         `User ${actorUserId} cannot manage tenant users`,
         TenantAccessControlExceptionCode.CAPABILITY_DENIED,
-        HttpStatus.FORBIDDEN,
-      );
-    }
-
-    if (requestedRole === 'owner') {
-      throw new TenantAccessControlException(
-        'Tenant admins cannot create or promote tenant owners',
-        TenantAccessControlExceptionCode.PRIVILEGE_ESCALATION_DENIED,
         HttpStatus.FORBIDDEN,
       );
     }
