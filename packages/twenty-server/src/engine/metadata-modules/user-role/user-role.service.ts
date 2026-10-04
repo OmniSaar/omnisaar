@@ -15,6 +15,7 @@ import { RoleTargetEntity } from 'src/engine/metadata-modules/role-target/role-t
 import { RoleTargetService } from 'src/engine/metadata-modules/role-target/services/role-target.service';
 import { RoleValidationService } from 'src/engine/metadata-modules/role-validation/services/role-validation.service';
 import { RoleEntity } from 'src/engine/metadata-modules/role/role.entity';
+import { assertRoleWithinDelegationCeilingOrThrow } from 'src/engine/metadata-modules/user-role/utils/assert-role-within-delegation-ceiling.util';
 import { WorkspaceOrmManager } from 'src/engine/twenty-orm/workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { InjectWorkspaceScopedRepository } from 'src/engine/twenty-orm/workspace-scoped-repository/inject-workspace-scoped-repository.decorator';
@@ -29,6 +30,8 @@ export class UserRoleService {
     private readonly roleTargetRepository: WorkspaceScopedRepository<RoleTargetEntity>,
     @InjectRepository(UserWorkspaceEntity)
     private readonly userWorkspaceRepository: Repository<UserWorkspaceEntity>,
+    @InjectRepository(RoleEntity)
+    private readonly roleRepository: Repository<RoleEntity>,
     private readonly workspaceOrmManager: WorkspaceOrmManager,
     private readonly roleTargetService: RoleTargetService,
     private readonly workspaceCacheService: WorkspaceCacheService,
@@ -68,7 +71,6 @@ export class UserRoleService {
       );
     }
 
-    // Before role validation so a self-assignment reports the self-role error even for an unknown role
     this.validateNotSelfAssignmentOrThrow({
       userWorkspaceIds: [userWorkspace.id],
       actingUserWorkspaceId,
@@ -108,6 +110,14 @@ export class UserRoleService {
       userWorkspaceIds,
       actingUserWorkspaceId,
     });
+
+    if (isDefined(actingUserWorkspaceId)) {
+      await this.validateRoleDelegationCeilingOrThrow({
+        actingUserWorkspaceId,
+        roleId,
+        workspaceId,
+      });
+    }
 
     const userWorkspaceIdsToAssign =
       await this.validateAssignRoleInputsAndGetUserWorkspaceIdsToAssign({
@@ -154,6 +164,49 @@ export class UserRoleService {
     }
 
     return roleId;
+  }
+
+  private async validateRoleDelegationCeilingOrThrow({
+    actingUserWorkspaceId,
+    roleId,
+    workspaceId,
+  }: {
+    actingUserWorkspaceId: string;
+    roleId: string;
+    workspaceId: string;
+  }): Promise<void> {
+    const actorRoleId = await this.getRoleIdForUserWorkspace({
+      workspaceId,
+      userWorkspaceId: actingUserWorkspaceId,
+    });
+
+    const roles = await this.roleRepository.find({
+      where: {
+        id: In([actorRoleId, roleId]),
+        workspaceId,
+      },
+      relations: {
+        rolePermissionFlags: {
+          permissionFlag: true,
+        },
+        objectPermissions: true,
+        fieldPermissions: true,
+        rowLevelPermissionPredicates: true,
+        rowLevelPermissionPredicateGroups: true,
+      },
+    });
+
+    const actorRole = roles.find(({ id }) => id === actorRoleId);
+    const targetRole = roles.find(({ id }) => id === roleId);
+
+    if (!isDefined(actorRole) || !isDefined(targetRole)) {
+      throw new PermissionsException(
+        PermissionsExceptionMessage.ROLE_NOT_FOUND,
+        PermissionsExceptionCode.ROLE_NOT_FOUND,
+      );
+    }
+
+    assertRoleWithinDelegationCeilingOrThrow({ actorRole, targetRole });
   }
 
   public async getRolesByUserWorkspaces({
