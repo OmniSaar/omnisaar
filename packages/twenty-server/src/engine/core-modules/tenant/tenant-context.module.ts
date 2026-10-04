@@ -10,6 +10,8 @@ import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenan
 import { TenantMembershipEntity } from 'src/engine/core-modules/tenant/tenant-membership.entity';
 import { TenantWorkspaceEntity } from 'src/engine/core-modules/tenant/tenant-workspace.entity';
 import { TenantEntity } from 'src/engine/core-modules/tenant/tenant.entity';
+import { WorkspaceAdministrationGrantEntity } from 'src/engine/core-modules/tenant/workspace-administration-grant.entity';
+import { WorkspaceAdministrationService } from 'src/engine/core-modules/tenant/workspace-administration.service';
 import { CustomException } from 'src/utils/custom-exception';
 
 export enum TenantContextExceptionCode {
@@ -120,9 +122,18 @@ export class TenantContextService {
       TenantEntity,
       TenantWorkspaceEntity,
       TenantMembershipEntity,
+      WorkspaceAdministrationGrantEntity,
     ]),
   ],
-  providers: [TenantContextService, TenantAccessControlService],
-  exports: [TenantContextService, TenantAccessControlService],
+  providers: [
+    TenantContextService,
+    TenantAccessControlService,
+    WorkspaceAdministrationService,
+  ],
+  exports: [
+    TenantContextService,
+    TenantAccessControlService,
+    WorkspaceAdministrationService,
+  ],
 })
 export class TenantModule {}
