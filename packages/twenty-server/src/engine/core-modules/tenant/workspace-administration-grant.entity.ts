@@ -37,8 +37,16 @@ export type WorkspaceAdministrationCapability =
 @Index('IDX_WORKSPACE_ADMIN_GRANT_MEMBERSHIP_ID', ['tenantMembershipId'])
 @Index('IDX_WORKSPACE_ADMIN_GRANT_WORKSPACE_ID', ['workspaceId'])
 @Check(
+  'CHK_WORKSPACE_ADMIN_GRANT_STATUS',
+  `"status" IN ('active', 'suspended')`,
+)
+@Check(
   'CHK_WORKSPACE_ADMIN_GRANT_CAPABILITIES_ARRAY',
   `jsonb_typeof("administrationCapabilities") = 'array'`,
+)
+@Check(
+  'CHK_WORKSPACE_ADMIN_GRANT_KNOWN_CAPABILITIES',
+  `"administrationCapabilities" <@ '["workspace.users.manage","workspace.roles.manage","workspace.admins.delegate","workspace.integrations.manage","workspace.settings.manage","workspace.agents.manage","workspace.approvals.manage","workspace.reports.view"]'::jsonb`,
 )
 export class WorkspaceAdministrationGrantEntity {
   @PrimaryGeneratedColumn('uuid')
