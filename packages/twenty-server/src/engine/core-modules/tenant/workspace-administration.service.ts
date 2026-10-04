@@ -7,7 +7,7 @@ import { assertUnreachable } from 'twenty-shared/utils';
 import { Repository } from 'typeorm';
 
 import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenant-access-control.service';
-import { TenantContextService } from 'src/engine/core-modules/tenant/tenant-context.module';
+import { TenantWorkspaceEntity } from 'src/engine/core-modules/tenant/tenant-workspace.entity';
 import {
   WORKSPACE_ADMINISTRATION_CAPABILITIES,
   WorkspaceAdministrationGrantEntity,
@@ -16,6 +16,7 @@ import {
 import { CustomException } from 'src/utils/custom-exception';
 
 export enum WorkspaceAdministrationExceptionCode {
+  WORKSPACE_SCOPE_DENIED = 'WORKSPACE_ADMINISTRATION_SCOPE_DENIED',
   GRANT_NOT_FOUND = 'WORKSPACE_ADMINISTRATION_GRANT_NOT_FOUND',
   GRANT_INACTIVE = 'WORKSPACE_ADMINISTRATION_GRANT_INACTIVE',
   CAPABILITY_DENIED = 'WORKSPACE_ADMINISTRATION_CAPABILITY_DENIED',
@@ -27,6 +28,8 @@ const getWorkspaceAdministrationExceptionUserFriendlyMessage = (
   code: WorkspaceAdministrationExceptionCode,
 ): MessageDescriptor => {
   switch (code) {
+    case WorkspaceAdministrationExceptionCode.WORKSPACE_SCOPE_DENIED:
+      return msg`This workspace is not part of this organization.`;
     case WorkspaceAdministrationExceptionCode.GRANT_NOT_FOUND:
       return msg`You are not an administrator for this workspace.`;
     case WorkspaceAdministrationExceptionCode.GRANT_INACTIVE:
@@ -61,7 +64,8 @@ export class WorkspaceAdministrationService {
   constructor(
     @InjectRepository(WorkspaceAdministrationGrantEntity)
     private readonly workspaceAdministrationGrantRepository: Repository<WorkspaceAdministrationGrantEntity>,
-    private readonly tenantContextService: TenantContextService,
+    @InjectRepository(TenantWorkspaceEntity)
+    private readonly tenantWorkspaceRepository: Repository<TenantWorkspaceEntity>,
     private readonly tenantAccessControlService: TenantAccessControlService,
   ) {}
 
@@ -77,11 +81,7 @@ export class WorkspaceAdministrationService {
     workspaceId: string;
   }): Promise<void> {
     this.assertKnownCapabilities([capability]);
-
-    await this.tenantContextService.assertWorkspaceBelongsToTenant({
-      tenantId,
-      workspaceId,
-    });
+    await this.assertWorkspaceBelongsToTenant({ tenantId, workspaceId });
 
     const membership =
       await this.tenantAccessControlService.getActiveMembershipOrThrow({
@@ -137,11 +137,7 @@ export class WorkspaceAdministrationService {
     workspaceId: string;
   }): Promise<void> {
     this.assertKnownCapabilities(requestedCapabilities);
-
-    await this.tenantContextService.assertWorkspaceBelongsToTenant({
-      tenantId,
-      workspaceId,
-    });
+    await this.assertWorkspaceBelongsToTenant({ tenantId, workspaceId });
 
     const actorMembership =
       await this.tenantAccessControlService.getActiveMembershipOrThrow({
@@ -169,9 +165,7 @@ export class WorkspaceAdministrationService {
       );
     }
 
-    const actorCapabilities = new Set(
-      actorGrant.administrationCapabilities,
-    );
+    const actorCapabilities = new Set(actorGrant.administrationCapabilities);
 
     if (
       !actorCapabilities.has('workspace.users.manage') ||
@@ -192,6 +186,27 @@ export class WorkspaceAdministrationService {
       throw new WorkspaceAdministrationException(
         `User ${actorUserId} cannot grant workspace capability ${escalatedCapability}`,
         WorkspaceAdministrationExceptionCode.PRIVILEGE_ESCALATION_DENIED,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
+  private async assertWorkspaceBelongsToTenant({
+    tenantId,
+    workspaceId,
+  }: {
+    tenantId: string;
+    workspaceId: string;
+  }): Promise<void> {
+    const mapping = await this.tenantWorkspaceRepository.findOne({
+      select: { id: true },
+      where: { tenantId, workspaceId },
+    });
+
+    if (!mapping) {
+      throw new WorkspaceAdministrationException(
+        `Workspace ${workspaceId} does not belong to tenant ${tenantId}`,
+        WorkspaceAdministrationExceptionCode.WORKSPACE_SCOPE_DENIED,
         HttpStatus.FORBIDDEN,
       );
     }
