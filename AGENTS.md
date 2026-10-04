@@ -13,8 +13,23 @@ Before changing this repository:
 - Keep read, draft, approve and mutate/publish capabilities explicitly separated for agent tools.
 - Do not commit secrets, customer exports, provider tokens or production credentials.
 - Do not create or modify GitHub Actions workflows unless the task explicitly requires it and a human has authorized that class of change.
-- If GitHub returns restriction, abuse-control or rate-limit 403/429 responses, stop writes and automatic retries and record the blocker.
 - Follow the upstream Twenty engineering rules below unless an accepted OmniSaar architecture decision explicitly overrides them.
+
+## GitHub safety
+
+Follow the canonical policy in `OmniSaar/core/docs/policies/GITHUB-SAFETY-GUARDRAILS.md` and machine policy in `OmniSaar/Automation/policy/github-guardrails.json`.
+
+GitHub Actions is restricted to approved repository-scoped CI. It is not OmniSaar's agent runtime, scheduler, crawler runtime, queue system, backup system, production host, or general compute layer. Scheduled Actions are forbidden by default. Workflow creation/change requires explicit human approval and local preflight with `OmniSaar/Automation/scripts/check_github_actions_policy.py`.
+
+## GitHub safety circuit breaker
+
+If GitHub returns a 403/429 related to restriction, suspension, abuse controls, or rate limiting:
+- stop GitHub writes;
+- stop automatic retries;
+- record the exact blocker;
+- do not work around the restriction;
+- route execution away from GitHub;
+- require human approval before resuming.
 
 See `docs/omnisaar/README.md` for the product-layer map and fork-specific engineering context.
 
