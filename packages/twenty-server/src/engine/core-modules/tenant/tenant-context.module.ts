@@ -6,6 +6,7 @@ import { msg } from '@lingui/core/macro';
 import { assertUnreachable } from 'twenty-shared/utils';
 import { Repository } from 'typeorm';
 
+import { ActivityLedgerModule } from 'src/engine/core-modules/activity-ledger/activity-ledger.module';
 import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenant-access-control.service';
 import { TenantMembershipEntity } from 'src/engine/core-modules/tenant/tenant-membership.entity';
 import { TenantProvisioningService } from 'src/engine/core-modules/tenant/tenant-provisioning.service';
@@ -119,6 +120,7 @@ export class TenantContextService {
 
 @Module({
   imports: [
+    ActivityLedgerModule,
     TypeOrmModule.forFeature([
       TenantEntity,
       TenantWorkspaceEntity,
