@@ -25,7 +25,7 @@ export class TenantWorkspaceEntity {
   @Column({ type: 'uuid' })
   tenantId: string;
 
-  @ManyToOne(() => TenantEntity, { onDelete: 'CASCADE' })
+  @ManyToOne(() => TenantEntity, { onDelete: 'RESTRICT' })
   @JoinColumn({
     name: 'tenantId',
     foreignKeyConstraintName: 'FK_TENANT_WORKSPACE_TENANT_ID',
