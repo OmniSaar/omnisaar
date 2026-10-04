@@ -1,7 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 
-import { IsNull, QueryFailedError, Repository } from 'typeorm';
+import {
+  EntityManager,
+  IsNull,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 
 import {
   ActivityLedgerEventEntity,
@@ -35,6 +40,8 @@ export type AppendActivityLedgerEventInput = {
   metadata?: Record<string, unknown>;
   artifactReferences?: Array<Record<string, unknown>>;
 };
+
+type ActivityLedgerRepository = Repository<ActivityLedgerEventEntity>;
 
 const SENSITIVE_METADATA_KEY_PATTERN =
   /(?:password|passwd|secret|authorization|cookie|session|api[-_]?key|access[-_]?token|refresh[-_]?token|private[-_]?key)/i;
@@ -70,16 +77,33 @@ const assertMetadataIsSafe = (
 export class ActivityLedgerService {
   constructor(
     @InjectRepository(ActivityLedgerEventEntity)
-    private readonly activityLedgerRepository: Repository<ActivityLedgerEventEntity>,
+    private readonly activityLedgerRepository: ActivityLedgerRepository,
   ) {}
 
   async append(
     input: AppendActivityLedgerEventInput,
   ): Promise<ActivityLedgerEventEntity> {
+    return this.appendUsingRepository(this.activityLedgerRepository, input);
+  }
+
+  async appendWithManager(
+    manager: EntityManager,
+    input: AppendActivityLedgerEventInput,
+  ): Promise<ActivityLedgerEventEntity> {
+    return this.appendUsingRepository(
+      manager.getRepository(ActivityLedgerEventEntity),
+      input,
+    );
+  }
+
+  private async appendUsingRepository(
+    repository: ActivityLedgerRepository,
+    input: AppendActivityLedgerEventInput,
+  ): Promise<ActivityLedgerEventEntity> {
     assertMetadataIsSafe(input.metadata ?? {});
     assertMetadataIsSafe(input.artifactReferences ?? [], 'artifactReferences');
 
-    const event = this.activityLedgerRepository.create({
+    const event = repository.create({
       ...input,
       occurredAt: input.occurredAt ?? new Date(),
       instanceId: input.instanceId ?? null,
@@ -102,14 +126,14 @@ export class ActivityLedgerService {
     });
 
     try {
-      return await this.activityLedgerRepository.save(event);
+      return await repository.save(event);
     } catch (error) {
       if (
         input.idempotencyKey &&
         error instanceof QueryFailedError &&
         (error.driverError as { code?: string } | undefined)?.code === '23505'
       ) {
-        const existingEvent = await this.activityLedgerRepository.findOne({
+        const existingEvent = await repository.findOne({
           where: {
             tenantId: input.tenantId ?? IsNull(),
             workspaceId: input.workspaceId ?? IsNull(),
