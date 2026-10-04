@@ -33,7 +33,7 @@ export class AddOmniSaarTenantHierarchyFastInstanceCommand
         "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_TENANT_WORKSPACE_ID" PRIMARY KEY ("id"),
         CONSTRAINT "FK_TENANT_WORKSPACE_TENANT_ID" FOREIGN KEY ("tenantId")
-          REFERENCES "core"."tenant"("id") ON DELETE CASCADE,
+          REFERENCES "core"."tenant"("id") ON DELETE RESTRICT,
         CONSTRAINT "FK_TENANT_WORKSPACE_WORKSPACE_ID" FOREIGN KEY ("workspaceId")
           REFERENCES "core"."workspace"("id") ON DELETE CASCADE
       )`,
