@@ -1,4 +1,5 @@
 import {
+  Check,
   Column,
   CreateDateColumn,
   Entity,
@@ -45,6 +46,19 @@ export type TenantMembershipStatus =
 @Unique('IDX_TENANT_MEMBERSHIP_TENANT_USER_UNIQUE', ['tenantId', 'userId'])
 @Index('IDX_TENANT_MEMBERSHIP_TENANT_ID', ['tenantId'])
 @Index('IDX_TENANT_MEMBERSHIP_USER_ID', ['userId'])
+@Check('CHK_TENANT_MEMBERSHIP_ROLE', `"role" IN ('owner', 'admin', 'member')`)
+@Check(
+  'CHK_TENANT_MEMBERSHIP_STATUS',
+  `"status" IN ('active', 'suspended')`,
+)
+@Check(
+  'CHK_TENANT_ADMIN_CAPABILITIES_ARRAY',
+  `jsonb_typeof("administrationCapabilities") = 'array'`,
+)
+@Check(
+  'CHK_TENANT_MEMBER_HAS_NO_ADMIN_CAPABILITIES',
+  `"role" <> 'member' OR jsonb_array_length("administrationCapabilities") = 0`,
+)
 export class TenantMembershipEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
