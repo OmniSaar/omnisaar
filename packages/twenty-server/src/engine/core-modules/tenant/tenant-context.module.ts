@@ -6,6 +6,8 @@ import { msg } from '@lingui/core/macro';
 import { assertUnreachable } from 'twenty-shared/utils';
 import { Repository } from 'typeorm';
 
+import { TenantAccessControlService } from 'src/engine/core-modules/tenant/tenant-access-control.service';
+import { TenantMembershipEntity } from 'src/engine/core-modules/tenant/tenant-membership.entity';
 import { TenantWorkspaceEntity } from 'src/engine/core-modules/tenant/tenant-workspace.entity';
 import { TenantEntity } from 'src/engine/core-modules/tenant/tenant.entity';
 import { CustomException } from 'src/utils/custom-exception';
@@ -113,8 +115,14 @@ export class TenantContextService {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([TenantEntity, TenantWorkspaceEntity])],
-  providers: [TenantContextService],
-  exports: [TenantContextService],
+  imports: [
+    TypeOrmModule.forFeature([
+      TenantEntity,
+      TenantWorkspaceEntity,
+      TenantMembershipEntity,
+    ]),
+  ],
+  providers: [TenantContextService, TenantAccessControlService],
+  exports: [TenantContextService, TenantAccessControlService],
 })
 export class TenantModule {}
