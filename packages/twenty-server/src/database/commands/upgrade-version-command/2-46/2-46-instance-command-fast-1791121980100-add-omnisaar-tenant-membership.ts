@@ -25,6 +25,9 @@ export class AddOmniSaarTenantMembershipFastInstanceCommand
           REFERENCES "core"."user"("id") ON DELETE CASCADE,
         CONSTRAINT "CHK_TENANT_MEMBERSHIP_ROLE" CHECK ("role" IN ('owner', 'admin', 'member')),
         CONSTRAINT "CHK_TENANT_MEMBERSHIP_STATUS" CHECK ("status" IN ('active', 'suspended')),
+        CONSTRAINT "CHK_TENANT_ADMIN_CAPABILITIES_ARRAY" CHECK (
+          jsonb_typeof("administrationCapabilities") = 'array'
+        ),
         CONSTRAINT "CHK_TENANT_MEMBER_HAS_NO_ADMIN_CAPABILITIES" CHECK (
           "role" <> 'member' OR jsonb_array_length("administrationCapabilities") = 0
         )
