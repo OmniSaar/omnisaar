@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { INSTANCE_COMMANDS } from 'src/database/commands/upgrade-version-command/instance-commands.constant';
+import { OMNISAAR_INSTANCE_COMMANDS } from 'src/database/commands/upgrade-version-command/omnisaar-instance-commands.constant';
 import { JwtModule } from 'src/engine/core-modules/jwt/jwt.module';
 import { SecretEncryptionModule } from 'src/engine/core-modules/secret-encryption/secret-encryption.module';
 import { SimpleSecretEncryptionUtil } from 'src/database/commands/upgrade-version-command/2-5/utils/simple-secret-encryption.util';
@@ -17,6 +18,10 @@ import { WorkspaceCacheModule } from 'src/engine/workspace-cache/workspace-cache
     // is retired.
     JwtModule,
   ],
-  providers: [...INSTANCE_COMMANDS, SimpleSecretEncryptionUtil],
+  providers: [
+    ...INSTANCE_COMMANDS,
+    ...OMNISAAR_INSTANCE_COMMANDS,
+    SimpleSecretEncryptionUtil,
+  ],
 })
 export class InstanceCommandProviderModule {}
