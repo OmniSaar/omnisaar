@@ -4,6 +4,7 @@ import { AddWorkspaceAdministrationGrantsFastInstanceCommand } from 'src/databas
 import { HardenOmniSaarTenantProvisioningFastInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-fast-1791121980300-harden-omnisaar-tenant-provisioning';
 import { AddOmniSaarActivityLedgerFastInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-fast-1791121980400-add-omnisaar-activity-ledger';
 import { AddOmniSaarApprovalEngineFastInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-fast-1791121980500-add-omnisaar-approval-engine';
+import { AddAgentAutonomyPolicyFastInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-fast-1791121980600-add-agent-autonomy-policy';
 import { BackfillOmniSaarTenantHierarchySlowInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-slow-1791121980001-backfill-omnisaar-tenant-hierarchy';
 import { BackfillOmniSaarTenantMembershipSlowInstanceCommand } from 'src/database/commands/upgrade-version-command/2-46/2-46-instance-command-slow-1791121980101-backfill-omnisaar-tenant-membership';
 
@@ -16,4 +17,5 @@ export const OMNISAAR_INSTANCE_COMMANDS = [
   HardenOmniSaarTenantProvisioningFastInstanceCommand,
   AddOmniSaarActivityLedgerFastInstanceCommand,
   AddOmniSaarApprovalEngineFastInstanceCommand,
+  AddAgentAutonomyPolicyFastInstanceCommand,
 ];
