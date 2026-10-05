@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { ActivityLedgerModule } from 'src/engine/core-modules/activity-ledger/activity-ledger.module';
+import { AgentAutonomyPolicyEntity } from 'src/engine/core-modules/approval/agent-autonomy-policy.entity';
 import { ApprovalRequestEntity } from 'src/engine/core-modules/approval/approval-request.entity';
 import {
   ApprovalPolicyService,
@@ -16,7 +17,11 @@ import { UserRoleModule } from 'src/engine/metadata-modules/user-role/user-role.
     ActivityLedgerModule,
     TenantModule,
     UserRoleModule,
-    TypeOrmModule.forFeature([ApprovalRequestEntity, UserWorkspaceEntity]),
+    TypeOrmModule.forFeature([
+      AgentAutonomyPolicyEntity,
+      ApprovalRequestEntity,
+      UserWorkspaceEntity,
+    ]),
   ],
   providers: [ApprovalPolicyService, ApprovalService],
   exports: [ApprovalPolicyService, ApprovalService],
